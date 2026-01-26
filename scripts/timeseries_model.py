@@ -67,7 +67,8 @@ def run_lstm(train, test, window_size=60):
     X_test = X_test.reshape((X_test.shape[0], X_test.shape[1], 1))
     
     predictions = model.predict(X_test)
-    return scaler.inverse_transform(predictions)
+    unscaled_preds = scaler.inverse_transform(predictions)
+    return unscaled_preds, model, scaler
 
 def evaluate_performance(actual, predicted):
     """Calculates MAE, RMSE, and MAPE metrics."""
@@ -89,3 +90,28 @@ def evaluate_performance(actual, predicted):
     mape = np.mean(np.abs((actual_vals - pred_vals) / actual_vals)) * 100
     
     return {"MAE": mae, "RMSE": rmse, "MAPE": mape}
+
+def forecast_future_lstm(model, last_60_days_scaled, steps, scaler):
+    """
+    Recursive multi-step forecasting for LSTM.
+    """
+    future_predictions = []
+    # Start with the last window from your training/test set
+    current_window = last_60_days_scaled.reshape((1, 60, 1))
+
+    for i in range(steps):
+        # Predict the next price point
+        next_pred = model.predict(current_window, verbose=0)
+        
+        # Store the prediction
+        future_predictions.append(next_pred[0])
+        
+        # Reshape prediction to fit the window: (1, 1, 1)
+        next_pred_reshaped = next_pred.reshape((1, 1, 1))
+        
+        # Update window: Slide it forward by dropping the first day and adding the prediction
+        current_window = np.append(current_window[:, 1:, :], next_pred_reshaped, axis=1)
+
+    # Inverse scale to get actual USD prices
+    future_predictions_usd = scaler.inverse_transform(np.array(future_predictions).reshape(-1, 1))
+    return future_predictions_usd
